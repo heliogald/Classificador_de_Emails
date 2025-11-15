@@ -1,67 +1,118 @@
-# Classificador Inteligente de Emails (Streamlit + OpenRouter + Heurística + opcional local ML)
+# 📧 Classificador Inteligente de Emails  
+### *Streamlit + OpenRouter + Heurísticas + Classificador ML Opcional*
 
-Uma aplicação para classificar emails em **Produtivo** / **Improdutivo** e gerar respostas automáticas.
-Combina LLM (OpenRouter / OpenAI client) + heurísticas + (opcional) classificador local TF-IDF + LogisticRegression.
+Uma aplicação que classifica emails em **Produtivo** ou **Improdutivo** e gera **respostas automáticas** usando Inteligência Artificial.  
+A solução combina:
 
----
-
-## Conteúdo do repositório
-
-- `app.py` - Aplicação Streamlit completa (upload de .txt/.pdf, spaCy preprocessing, ensemble LLM+heurística, opção FastAPI).
-- `train_local_classifier.py` - Script para treinar e salvar um classificador local (opcional).
-- `models/` - (gerado) onde o classificador local e TF-IDF serão salvos (`local_clf.joblib`, `local_tfidf.joblib`).
-- `requirements.txt` - Dependências.
-- `.github/workflows/ci.yml` - GitHub Actions para CI (instala deps e roda pytest).
-- `examples/` - (recomendado) coloque exemplos .txt rotulados para demonstração.
+- Modelos LLM via **OpenRouter**
+- Regras heurísticas para maior precisão
+- (Opcional) Classificador local usando **TF-IDF + LogisticRegression**
+- Interface intuitiva via **Streamlit**
 
 ---
 
-## Requisitos
+## 📁 Conteúdo do Repositório
 
-- Python 3.10+ recomendado.
+- `app.py` — Aplicação Streamlit (upload de .txt e .pdf, heurísticas, LLM e resposta automática)
+- `train_local_classifier.py` — Treinamento do classificador local
+- `models/` — Armazena `local_clf.joblib` e `local_tfidf.joblib`
+- `requirements.txt` — Dependências
+- `examples/` — Arquivos de email para teste
+- `.github/workflows/ci.yml` — Pipeline CI
+
+---
+
+## 🧰 Requisitos
+
+- Python **3.10+**
 - Variáveis de ambiente:
-  - `OPENROUTER_API_KEY` — chave do OpenRouter / OpenAI (se quiser usar LLM).
-  - `MODEL_NAME` (opcional) — ex.: `openai/gpt-4o-mini`.
+  - `OPENROUTER_API_KEY`
+  - `MODEL_NAME` (opcional)
 
 ---
 
-## Primeiros passos (local)
+## 🚀 Como Executar o Projeto Localmente
 
-1. Clone o repositório:
-
+### 1. Clone o repositório
 ```bash
-git clone https://github.com/seu-usuario/seu-repo.git
+git clone https://github.com/heliogald/Classificador_de_Emails.git
 cd seu-repo
+```
 
-Crie e ative ambiente virtual:
+### 2. Crie e ative ambiente virtual
 
+**macOS / Linux**
+```bash
 python -m venv .venv
-source .venv/bin/activate   # macOS/Linux
-.venv\Scripts\activate      # Windows
+source .venv/bin/activate
+```
 
+**Windows**
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
 
-Instale dependências:
-
+### 3. Instale dependências
+```bash
 pip install -r requirements.txt
-# se falhar com o wheel de pt_core_news_sm, instale manualmente:
-# python -m pip install pt_core_news_sm
-# ou rode: python -m spacy download pt_core_news_sm
+```
 
+Se necessário:
+```bash
+python -m spacy download pt_core_news_sm
+```
 
-Configure a chave da API:
+### 4. Configure variáveis
+**Linux/Mac**
+```bash
+export OPENROUTER_API_KEY="sua_chave_aqui"
+```
 
-export OPENROUTER_API_KEY="sua_chave_aqui"    # macOS/Linux
-setx OPENROUTER_API_KEY "sua_chave_aqui"     # Windows (em CMD)
-# Ou coloque em um .env (usando python-dotenv)
+**Windows**
+```cmd
+setx OPENROUTER_API_KEY "sua_chave_aqui"
+```
 
+Arquivo `.env` (opcional):
+```
+OPENROUTER_API_KEY=sua_chave
+MODEL_NAME=openai/gpt-4o-mini
+```
 
-(Opcional) Treine um classificador local:
-
+### 5. (Opcional) Treine o classificador local
+```bash
 python train_local_classifier.py --data data/dataset.csv --out-dir models
-# dataset.csv deve conter colunas: "text","label" (label: Produtivo/Improdutivo)
+```
 
-
-Rode a aplicação Streamlit:
-
+### 6. Execute o Streamlit
+```bash
 streamlit run app.py
 ```
+
+---
+
+## 🌐 Deploy (Hugging Face Spaces)
+
+1. Crie um Space (tipo **Streamlit**)
+2. Faça upload dos arquivos
+3. Adicione o secret:
+   - `OPENROUTER_API_KEY`
+4. Deploy automático
+
+---
+
+## 🤖 Funcionalidades
+
+- Upload de `.txt` e `.pdf`
+- Classificação híbrida
+- Geração de resposta automática
+- Download da resposta
+- Heurísticas inteligentes + LLM
+- CI com GitHub Actions
+
+---
+
+## 📄 Licença
+
+MIT License
