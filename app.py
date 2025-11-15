@@ -8,12 +8,19 @@ from typing import Dict, Any, Optional
 
 import streamlit as st
 from dotenv import load_dotenv
+from typing import Dict, Any, Optional
+# Importa o erro específico para captura
+try:
+    from streamlit.errors import StreamlitSecretNotFoundError
+except ImportError:
+    # Se o erro não existir (Streamlit antigo), definimos uma classe genérica para não quebrar
+    class StreamlitSecretNotFoundError(Exception):
+        pass
 
 # LLM client (OpenRouter wrapper via openai.OpenAI)
 try:
     from openai import OpenAI
 except Exception:
-    # if openai package not available, will error later on LLM calls
     OpenAI = None
 
 # PDF extraction
@@ -44,11 +51,29 @@ except Exception:
     FastAPI = None
 
 # ---------------------------
-# Config / Load env
+# Config / Load env 
 # ---------------------------
-load_dotenv()
+# 1. CARREGA O .env LOCALMENTE
+load_dotenv() 
+
+# Variáveis padrão (fallback para os.getenv)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-4o-mini")
+
+# 2. Tenta SOBRESCREVER com st.secrets, capturando o erro local
+try:
+    # Tenta obter de st.secrets, que é a fonte primária no deploy
+    if "OPENROUTER_API_KEY" in st.secrets:
+        OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
+    if "MODEL_NAME" in st.secrets:
+        MODEL_NAME = st.secrets["MODEL_NAME"]
+        
+except StreamlitSecretNotFoundError:
+    # Captura o erro fatal no local (ausência de secrets.toml) e permite que o os.getenv (dotenv) prevaleça
+    pass
+except Exception as e:
+    # Outros erros de inicialização de secrets
+    print(f"Aviso: Erro ao carregar st.secrets: {e}")
 
 # Init LLM client if possible
 client = None
@@ -56,6 +81,7 @@ if OPENROUTER_API_KEY and OpenAI is not None:
     try:
         client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
     except Exception as e:
+        print(f"ERRO DE INICIALIZAÇÃO DO CLIENTE LLM: {e}")
         client = None
 
 # ---------------------------
@@ -85,7 +111,6 @@ if spacy is not None:
     try:
         nlp = spacy.load(SPACY_MODEL_NAME)
     except Exception:
-        # if model not installed, try to fallback to blank Portuguese pipeline
         try:
             nlp = spacy.blank("pt")
         except Exception:
@@ -309,6 +334,8 @@ def combine_decision(llm_result: dict, heur: dict, local_pred: Optional[str] = N
                 # conflict: mark indeterminate lower confidence
                 confidence = max(0.45, confidence - 0.15)
                 explanation += f" (conflito local_model={local_pred})"
+            return {"category": final_label, "confidence": round(min(confidence, 0.99), 2), "explanation": explanation, "source": source}
+
         return {"category": final_label, "confidence": round(min(confidence, 0.99), 2), "explanation": explanation, "source": source}
 
     # LLM ok
@@ -353,9 +380,12 @@ def combine_decision(llm_result: dict, heur: dict, local_pred: Optional[str] = N
     return {"category": final_label, "confidence": combined_conf, "explanation": f"Combinação LLM+heur ({llm_expl})", "source": "combined"}
 
 # ---------------------------
-# Response templates + polish
+# Helpers: LLM Full Response Generation (Substitui templates)
 # ---------------------------
-def generate_response_template(email_text: str, category: str, confidence: float) -> str:
+
+# Mantido como um fallback em caso de falha do LLM
+def _fallback_response_template(email_text: str, category: str, confidence: float) -> str:
+    # Lógica do antigo generate_response_template
     if category == "Produtivo":
         resp = (
             "Recebemos sua solicitação e iniciamos a análise. "
@@ -375,31 +405,54 @@ def generate_response_template(email_text: str, category: str, confidence: float
             resp = "Obrigado pelo contato. Se precisar de suporte, estamos à disposição."
         return resp
 
-def polish_text_with_llm(text: str) -> str:
+# NOVA FUNÇÃO: Gera a resposta completa e polida via LLM
+def llm_generate_full_response(email_text: str, category: str, confidence: float) -> str:
+    """Gera a resposta completa e polida ao cliente usando o LLM, baseada na classificação final."""
     if client is None:
-        return text
-    prompt = f"Reescreva a mensagem abaixo em no máximo 3 linhas, tom profissional e conciso. Não mencione datas comemorativas.\n\n{text}"
+        return _fallback_response_template(email_text, category, confidence)
+    
+    # Define o tom e as ações requeridas baseadas na classificação
+    if category == "Produtivo":
+        system_prompt = (
+            "Você é um atendente de suporte proativo. Sua tarefa é escrever uma resposta formal, "
+            "concisa e profissional (máximo 4 linhas) para um cliente que enviou uma solicitação de suporte/serviço. "
+            "Confirme o recebimento, informe que a solicitação foi encaminhada para análise e estabeleça uma expectativa de prazo (ex: 24 horas úteis)."
+        )
+    else: # Improdutivo
+        system_prompt = (
+            "Você é um atendente de relações públicas cordial. Sua tarefa é escrever uma resposta de agradecimento "
+            "muito concisa e calorosa (máximo 3 linhas) para um email que não requer ação (ex: agradecimento, parabéns, informativo). "
+            "Agradeça o contato e se coloque à disposição para futuras necessidades de suporte."
+        )
+
+    prompt = f"""
+Baseado na classificação '{category}' (confiança: {confidence:.2f}) e no conteúdo original do email do cliente, gere a resposta. Use um tom de voz adequado.
+
+Email do Cliente:
+---
+{email_text}
+---
+"""
     try:
-        resp = client.chat.completions.create(
+        response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "Você reescreve mensagens de forma concisa e profissional."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
-            max_tokens=180
+            max_tokens=250
         )
-        polished = resp.choices[0].message.content.strip()
-        if len(polished) < 5:
-            return text
-        return polished
+        llm_response = response.choices[0].message.content.strip()
+        # Se a LLM retornar uma resposta válida, use-a. Caso contrário, use o fallback.
+        return llm_response if llm_response and len(llm_response) > 5 else _fallback_response_template(email_text, category, confidence)
     except Exception:
-        return text
+        return _fallback_response_template(email_text, category, confidence)
 
 # ---------------------------
 # Main wrapper: process email
 # ---------------------------
-def processar_email_com_ia(texto_email: str, do_polish: bool = True) -> Dict[str, Any]:
+def processar_email_com_ia(texto_email: str) -> Dict[str, Any]:
     texto_email = sanitize_text(texto_email)
     if not texto_email:
         return {"status": "error", "message": "Texto vazio."}
@@ -416,7 +469,6 @@ def processar_email_com_ia(texto_email: str, do_polish: bool = True) -> Dict[str
         try:
             X = local_tfidf.transform([preprocessed])
             pred = local_clf.predict(X)[0]
-            # expect model labels to be "Produtivo" / "Improdutivo"
             local_pred = pred
         except Exception:
             local_pred = None
@@ -427,18 +479,15 @@ def processar_email_com_ia(texto_email: str, do_polish: bool = True) -> Dict[str
     # 5) Combine
     decision = combine_decision(llm_res, heur, local_pred)
 
-    # 6) Generate response
-    suggested = generate_response_template(texto_email, decision["category"], decision["confidence"])
-    polished_text = suggested
-    if do_polish:
-        polished_text = polish_text_with_llm(suggested)
+    # 6) Generate response (AGORA USA A FUNÇÃO LLM DIRETA)
+    polished_text = llm_generate_full_response(texto_email, decision["category"], decision["confidence"])
 
     result = {
         "category": decision["category"],
         "confidence": decision["confidence"],
         "explanation": decision["explanation"],
         "source": decision.get("source", ""),
-        "suggested_response": polished_text,
+        "suggested_response": polished_text, # Resposta LLM final
         "debug": {
             "preprocessed": preprocessed,
             "heuristic": heur,
@@ -452,13 +501,18 @@ def processar_email_com_ia(texto_email: str, do_polish: bool = True) -> Dict[str
 # ---------------------------
 # Streamlit UI
 # ---------------------------
+
+# REMOÇÃO DO ESTADO DE SESSÃO E FUNÇÕES CALLBACK RELACIONADAS AOS BOTÕES DE EXEMPLO
+# * Removidas: load_produtivo_example, load_improdutivo_example
+# * Removida: Inicialização do st.session_state['email_text_state']
+
+
 st.set_page_config(page_title="🤖 Classificador Inteligente de Emails", layout="wide")
 st.title("📧 Classificador e Sugestão de Resposta de Emails (AI)")
 st.markdown("Disponibiliza upload de `.txt` / `.pdf`, pré-processamento com spaCy, ensemble LLM+heurística e resposta automática.")
 
 st.sidebar.markdown("### Opções")
 show_debug = st.sidebar.checkbox("Mostrar debug", value=False)
-do_polish = st.sidebar.checkbox("Usar reescrita (polish) via LLM", value=True)
 use_local_model = st.sidebar.checkbox("Considerar classificador local (se disponível)", value=True)
 
 # upload area
@@ -466,38 +520,52 @@ st.markdown("#### 1. Carregue um email (.txt ou .pdf) ou cole o texto abaixo")
 uploaded = st.file_uploader("Upload (.txt, .pdf) ou escolha exemplo", type=["txt", "pdf"])
 col_text, col_actions = st.columns([3,1])
 
+# Lógica simplificada para carregar texto
+texto_in = ""
+
 if uploaded:
-    texto_in = extract_text_from_uploaded(uploaded)
-else:
-    texto_in = col_text.text_area("Ou cole o e-mail aqui", height=260, placeholder="Ex.: Olá, qual o status do protocolo 12345? Obrigado.")
+    # Se há upload, extrai o texto e o usa
+    texto_upload = extract_text_from_uploaded(uploaded)
+    texto_in = texto_upload
+    # Não há necessidade de st.rerun() ou session_state aqui se não houver botões de exemplo
+    
+# Área de texto (lendo a entrada direta do usuário ou o texto do upload)
+texto_in = col_text.text_area(
+    "Ou cole o e-mail aqui", 
+    height=260, 
+    placeholder="Ex.: Olá, qual o status do protocolo 12345? Obrigado.",
+    # Se 'texto_in' tiver sido preenchido pelo upload, ele aparecerá aqui como valor.
+    # Caso contrário, será uma string vazia e o placeholder será visível.
+    value=texto_in
+)
+
 
 # examples download / quick fill
 with col_actions:
     st.write("Exemplos")
-    if st.button("Carregar exemplo Produtivo"):
-        texto_in = "Olá, solicito atualização do protocolo 12345. O prazo expirou e precisamos de posição. Favor responder com o status."
-    if st.button("Carregar exemplo Improdutivo"):
-        texto_in = "Quero desejar feliz natal para toda a equipe! Obrigado pelo suporte."
+    
+    # BOTÕES DE EXEMPLO REMOVIDOS
+    
+    # Botão de Download (mantido)
     if st.button("Download exemplos"):
         ex_zip = False
-        # generate a small zip or text bundle for download
         exemplos = {
             "prod_1.txt": "Solicito atualização do protocolo 98765. Houve erro no processamento e anexo comprovante.",
             "prod_2.txt": "Boa tarde, o boleto com ID 44321 não foi registrado. Preciso de reemissão.",
             "improd_1.txt": "Parabéns a toda a equipe pelo ótimo trabalho neste ano! Boas festas!",
             "improd_2.txt": "Recebi o informativo mensal. Obrigado pelas informações."
         }
-        # prepare plain text output
         multi = "\n\n---\n\n".join([f"{k}\n\n{v}" for k,v in exemplos.items()])
         st.download_button("Baixar exemplos (.txt)", data=multi, file_name="exemplos_emails.txt", mime="text/plain")
 
 # main action
 if st.button("Processar Email", type="primary"):
+    # O processamento usa o texto_in, que contém o valor atualizado pelo text_area ou pelo upload.
     if not texto_in or not texto_in.strip():
         st.warning("Por favor, insira ou carregue o texto do email antes de processar.")
     else:
         with st.spinner("Analisando o email..."):
-            outcome = processar_email_com_ia(texto_in, do_polish=do_polish if client else False)
+            outcome = processar_email_com_ia(texto_in) 
             st.markdown("---")
             if outcome.get("status") != "ok":
                 st.error(outcome.get("message", "Erro desconhecido"))
@@ -509,11 +577,11 @@ if st.button("Processar Email", type="primary"):
                     cat = res["category"]
                     conf = res["confidence"]
                     if cat == "Produtivo":
-                        st.success(f"## 🛠️ {cat}  (confiança: {conf})")
+                        st.success(f"## 🛠️ {cat}  (confiança: {conf})")
                     elif cat == "Improdutivo":
-                        st.info(f"## 🥳 {cat}  (confiança: {conf})")
+                        st.info(f"## 🥳 {cat}  (confiança: {conf})")
                     else:
-                        st.warning(f"## ⚠️ {cat}  (confiança: {conf})")
+                        st.warning(f"## ⚠️ {cat}  (confiança: {conf})")
                     st.markdown(f"**Fonte da decisão:** {res.get('source')}")
                     st.markdown("**Explicação curta:**")
                     st.write(res.get("explanation"))
@@ -532,7 +600,6 @@ if st.button("Processar Email", type="primary"):
                     st.markdown("---")
                     st.subheader("🔍 Debug")
                     st.json(res["debug"])
-                    # show raw LLM output if present
                     if res["debug"].get("llm"):
                         st.markdown("**LLM raw (se disponível):**")
                         st.text(res["debug"]["llm"].get("raw", ""))
@@ -556,13 +623,13 @@ def run_fastapi():
 
     @api.post("/process")
     def process_email(payload: EmailIn):
-        return processar_email_com_ia(payload.text, do_polish=payload.polish)
+        # A flag do_polish aqui agora é ignorada, pois a resposta é sempre polida pela LLM
+        return processar_email_com_ia(payload.text) 
 
     @api.get("/health")
     def health():
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
 
-    # run uvicorn programmatically - won't run if this script executed by Streamlit normally
     uvicorn.run(api, host="0.0.0.0", port=8000)
 
 # ---------------------------
@@ -576,7 +643,4 @@ def main_cli():
         run_fastapi()
 
 if __name__ == "__main__":
-    # Only run CLI server when executed directly from command line (not when imported by Streamlit).
-    # For streamlit run app.py, __name__ == "__main__" but Streamlit loads file differently. To avoid starting API unintentionally,
-    # require explicit flag --with-api.
     main_cli()
