@@ -10,6 +10,7 @@ pdfplumber>=0.7.6
 
 # NLP / preprocessing
 spacy>=3.6.0
+pandas>=2.0.0 # Adicionado: Necessário para carregar o dataset no script de treinamento.
 
 # ML (local classifier)
 scikit-learn>=1.2.0
@@ -18,3 +19,7 @@ joblib>=1.2.0
 # Utilities
 pdfminer.six>=20221105
 python-multipart>=0.0.6
+
+# FastAPI (Para o servidor API opcional no app.py)
+fastapi>=0.95.0
+uvicorn[standard]>=0.20.0
