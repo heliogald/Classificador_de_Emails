@@ -13,8 +13,7 @@ jobs:
           fetch-depth: 0
           lfs: true
           
-      # 1. PASSO DE CONFIGURAÇÃO: Configura o "remote" para usar o token na URL.
-      # Isso torna os comandos 'git pull' e 'git push' mais limpos e seguros.
+      # 1. PASSO DE CONFIGURAÇÃO: Configura o "remote" para usar o token.
       - name: Configurar Credenciais do Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -22,10 +21,9 @@ jobs:
           # Define a URL do 'origin' para incluir o token para autenticação
           git remote set-url origin https://Helio00:$HF_TOKEN@huggingface.co/spaces/Helio00/Classificador_de_Emalis
           
-      # 2. SINCRONIZAÇÃO: Puxa (pull) as alterações do Hub (resolve o 'fetch first')
-      # Se houver histórico não relacionado, ele também precisa da flag: --allow-unrelated-histories
+      # 2. SINCRONIZAÇÃO: Puxa (pull) as alterações, resolvendo a divergência com --rebase.
       - name: Sincronizar localmente com o Hub
-        run: git pull origin main
+        run: git pull origin main --rebase --allow-unrelated-histories
 
       # 3. ENVIO: Envia o código atualizado
       - name: Enviar para o Hub
