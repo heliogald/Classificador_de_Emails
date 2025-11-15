@@ -1,5 +1,15 @@
-# 📧 Classificador Inteligente de Emails  
-### *Streamlit + OpenRouter + Heurísticas + Classificador ML Opcional*
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/Framework-Streamlit-FF4B4B.svg" alt="Streamlit">
+  <img src="https://img.shields.io/badge/OpenRouter-API-green.svg" alt="OpenRouter">
+  <img src="https://img.shields.io/badge/LLM-GPT4o--Mini-purple.svg" alt="LLM">
+  <img src="https://img.shields.io/badge/Status-Em%20Desenvolvimento-yellow.svg" alt="Status">
+  <img src="https://img.shields.io/github/license/heliogald/Classificador_de_Emails.svg" alt="License">
+</p>
+
+# 📧 Classificador Inteligente de Emails
+
+### _Streamlit + OpenRouter + Heurísticas + Classificador ML Opcional_
 
 Uma aplicação que classifica emails em **Produtivo** ou **Improdutivo** e gera **respostas automáticas** usando Inteligência Artificial.  
 A solução combina:
@@ -34,6 +44,7 @@ A solução combina:
 ## 🚀 Como Executar o Projeto Localmente
 
 ### 1. Clone o repositório
+
 ```bash
 git clone https://github.com/heliogald/Classificador_de_Emails.git
 cd seu-repo
@@ -42,50 +53,60 @@ cd seu-repo
 ### 2. Crie e ative ambiente virtual
 
 **macOS / Linux**
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
 **Windows**
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
 ### 3. Instale dependências
+
 ```bash
 pip install -r requirements.txt
 ```
 
 Se necessário:
+
 ```bash
 python -m spacy download pt_core_news_sm
 ```
 
 ### 4. Configure variáveis
+
 **Linux/Mac**
+
 ```bash
 export OPENROUTER_API_KEY="sua_chave_aqui"
 ```
 
 **Windows**
+
 ```cmd
 setx OPENROUTER_API_KEY "sua_chave_aqui"
 ```
 
 Arquivo `.env` (opcional):
+
 ```
 OPENROUTER_API_KEY=sua_chave
 MODEL_NAME=openai/gpt-4o-mini
 ```
 
 ### 5. (Opcional) Treine o classificador local
+
 ```bash
 python train_local_classifier.py --data data/dataset.csv --out-dir models
 ```
 
 ### 6. Execute o Streamlit
+
 ```bash
 streamlit run app.py
 ```
