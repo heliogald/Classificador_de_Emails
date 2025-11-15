@@ -1,20 +1,27 @@
-name: Sync to Hugging Face hub
-
-on:
+nome: Sincronizar com o hub do Hugging Face
+sobre:
   push:
     branches: [main]
-  # Para permitir a execução manual a partir da aba Actions
+  # Para permitir um manual de execução a partir da aba Actions
   workflow_dispatch:
 
-jobs:
-  sync-to-hub:
+empregos:
+  Sincronizar com o hub:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    passos:
+      - usa: actions/checkout@v3
+        com:
+          profundidade-de-busca: 0
           lfs: true # Necessário para arquivos grandes de ML
-      - name: Push to hub
+          
+      # 1. PASSO DE CORREÇÃO: Puxar (pull) as alterações do Hub
+      - nome: Sincronizar localmente com o Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: git pull https://Helio00:$HF_TOKEN@huggingface.co/spaces/Helio00/Classificador_de_Emalis main
+
+      # 2. PASSO DE ENVIO: Enviar para o Hub
+      - nome: Enviar para o hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: git push https://Helio00:$HF_TOKEN@huggingface.co/spaces/Helio00/Classificador_de_Emalis main
